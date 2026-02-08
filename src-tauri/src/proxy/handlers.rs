@@ -13,6 +13,7 @@ use super::{
         CLAUDE_PARSER_CONFIG, CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
     },
     handler_context::RequestContext,
+    payload_logger::{self, RequestPayload},
     providers::{get_adapter, streaming::create_anthropic_sse_stream, transform},
     response_processor::{create_logged_passthrough_stream, process_response, SseUsageCollector},
     server::ProxyState,
@@ -125,21 +126,37 @@ async fn handle_claude_transform(
         // 创建使用量收集器
         let usage_collector = {
             let state = state.clone();
+            let request_id = ctx.request_id.clone();
             let provider_id = ctx.provider.id.clone();
             let model = ctx.request_model.clone();
+            let request_body = ctx.request_body.clone();
             let status_code = status.as_u16();
             let start_time = ctx.start_time;
 
             SseUsageCollector::new(start_time, move |events, first_token_ms| {
+                // 保存流式 payload
+                let events_json = serde_json::Value::Array(events.clone());
+                payload_logger::spawn_save_payload(
+                    request_id.clone(),
+                    RequestPayload {
+                        request: request_body.clone(),
+                        response: events_json,
+                        is_streaming: true,
+                        timestamp: chrono::Utc::now().timestamp(),
+                    },
+                );
+
                 if let Some(usage) = TokenUsage::from_claude_stream_events(&events) {
                     let latency_ms = start_time.elapsed().as_millis() as u64;
                     let state = state.clone();
+                    let request_id = request_id.clone();
                     let provider_id = provider_id.clone();
                     let model = model.clone();
 
                     tokio::spawn(async move {
                         log_usage(
                             &state,
+                            &request_id,
                             &provider_id,
                             "claude",
                             &model,
@@ -206,6 +223,17 @@ async fn handle_claude_transform(
         e
     })?;
 
+    // 保存非流式 payload
+    payload_logger::spawn_save_payload(
+        ctx.request_id.clone(),
+        RequestPayload {
+            request: ctx.request_body.clone(),
+            response: anthropic_response.clone(),
+            is_streaming: false,
+            timestamp: chrono::Utc::now().timestamp(),
+        },
+    );
+
     // 记录使用量
     if let Some(usage) = TokenUsage::from_claude_response(&anthropic_response) {
         let model = anthropic_response
@@ -217,11 +245,13 @@ async fn handle_claude_transform(
         let request_model = ctx.request_model.clone();
         tokio::spawn({
             let state = state.clone();
+            let request_id = ctx.request_id.clone();
             let provider_id = ctx.provider.id.clone();
             let model = model.to_string();
             async move {
                 log_usage(
                     &state,
+                    &request_id,
                     &provider_id,
                     "claude",
                     &model,
@@ -417,7 +447,7 @@ fn log_forward_error(
     let logger = UsageLogger::new(&state.db);
     let status_code = map_proxy_error_to_status(error);
     let error_message = get_error_message(error);
-    let request_id = uuid::Uuid::new_v4().to_string();
+    let request_id = ctx.request_id.clone();
 
     if let Err(e) = logger.log_error_with_context(
         request_id,
@@ -439,6 +469,7 @@ fn log_forward_error(
 #[allow(clippy::too_many_arguments)]
 async fn log_usage(
     state: &ProxyState,
+    request_id: &str,
     provider_id: &str,
     app_type: &str,
     model: &str,
@@ -461,10 +492,8 @@ async fn log_usage(
         model
     };
 
-    let request_id = uuid::Uuid::new_v4().to_string();
-
     if let Err(e) = logger.log_with_calculation(
-        request_id,
+        request_id.to_string(),
         provider_id.to_string(),
         app_type.to_string(),
         model.to_string(),

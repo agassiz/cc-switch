@@ -12,6 +12,7 @@ use crate::proxy::{
     ProxyError,
 };
 use axum::http::HeaderMap;
+use serde_json::Value;
 use std::time::Instant;
 
 /// 流式超时配置
@@ -33,6 +34,8 @@ pub struct StreamingTimeoutConfig {
 /// - 日志标签
 /// - Session ID（用于日志关联）
 pub struct RequestContext {
+    /// 请求唯一 ID（用于关联 payload 文件和数据库记录）
+    pub request_id: String,
     /// 请求开始时间
     pub start_time: Instant,
     /// 应用级代理配置（per-app，包含重试次数和超时配置）
@@ -59,6 +62,8 @@ pub struct RequestContext {
     pub session_id: String,
     /// 整流器配置
     pub rectifier_config: RectifierConfig,
+    /// 请求体（用于保存到 payload 文件）
+    pub request_body: Value,
 }
 
 impl RequestContext {
@@ -83,6 +88,7 @@ impl RequestContext {
         app_type_str: &'static str,
     ) -> Result<Self, ProxyError> {
         let start_time = Instant::now();
+        let request_id = uuid::Uuid::new_v4().to_string();
 
         // 从数据库读取应用级代理配置（per-app）
         let app_config = state
@@ -145,6 +151,7 @@ impl RequestContext {
         );
 
         Ok(Self {
+            request_id,
             start_time,
             app_config,
             provider,
@@ -156,6 +163,7 @@ impl RequestContext {
             app_type,
             session_id,
             rectifier_config,
+            request_body: body.clone(),
         })
     }
 

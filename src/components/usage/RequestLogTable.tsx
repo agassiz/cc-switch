@@ -17,10 +17,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useRequestLogs, usageKeys } from "@/lib/query/usage";
+import { useRequestLogs, usageKeys, useClearAllRequestLogs } from "@/lib/query/usage";
 import { useQueryClient } from "@tanstack/react-query";
 import type { LogFilters } from "@/types/usage";
-import { ChevronLeft, ChevronRight, RefreshCw, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Search, X, Trash2 } from "lucide-react";
+import { RequestDetailPanel } from "./RequestDetailPanel";
 import {
   fmtInt,
   fmtUsd,
@@ -55,6 +56,9 @@ export function RequestLogTable({ refreshIntervalMs }: RequestLogTableProps) {
   const [page, setPage] = useState(0);
   const pageSize = 20;
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const clearMutation = useClearAllRequestLogs();
 
   const { data: result, isLoading } = useRequestLogs({
     filters: appliedFilters,
@@ -322,6 +326,46 @@ export function RequestLogTable({ refreshIntervalMs }: RequestLogTableProps) {
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
+            {showClearConfirm ? (
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-red-600">
+                  {t("usage.clearConfirmHint", "确定清空所有数据？")}
+                </span>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-8 px-2"
+                  disabled={clearMutation.isPending}
+                  onClick={() => {
+                    clearMutation.mutate(undefined, {
+                      onSettled: () => setShowClearConfirm(false),
+                    });
+                  }}
+                >
+                  {clearMutation.isPending
+                    ? t("common.deleting", "删除中...")
+                    : t("common.confirm", "确定")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 px-2"
+                  onClick={() => setShowClearConfirm(false)}
+                >
+                  {t("common.cancel", "取消")}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowClearConfirm(true)}
+                className="h-8 px-2 text-muted-foreground hover:text-red-600"
+                title={t("usage.clearAllLogs", "清空所有日志")}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
 
@@ -385,7 +429,11 @@ export function RequestLogTable({ refreshIntervalMs }: RequestLogTableProps) {
                   </TableRow>
                 ) : (
                   logs.map((log) => (
-                    <TableRow key={log.requestId}>
+                    <TableRow
+                      key={log.requestId}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setSelectedRequestId(log.requestId)}
+                    >
                       <TableCell>
                         {new Date(log.createdAt * 1000).toLocaleString(locale)}
                       </TableCell>
@@ -579,6 +627,13 @@ export function RequestLogTable({ refreshIntervalMs }: RequestLogTableProps) {
             </div>
           )}
         </>
+      )}
+
+      {selectedRequestId && (
+        <RequestDetailPanel
+          requestId={selectedRequestId}
+          onClose={() => setSelectedRequestId(null)}
+        />
       )}
     </div>
   );

@@ -9,6 +9,7 @@ pub mod error_mapper;
 pub(crate) mod failover_switch;
 mod forwarder;
 pub mod handler_config;
+pub mod payload_logger;
 pub mod handler_context;
 mod handlers;
 mod health;

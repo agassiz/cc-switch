@@ -750,7 +750,15 @@
     "costBreakdown": "成本明细",
     "performance": "性能信息",
     "latency": "延迟",
-    "errorMessage": "错误信息"
+    "errorMessage": "错误信息",
+    "queryError": "查询出错",
+    "requestBody": "请求数据",
+    "responseBody": "响应数据",
+    "responseEvents": "响应事件 (SSE)",
+    "noPayloadData": "无请求/响应数据（仅记录新请求的数据）",
+    "requestId": "请求ID",
+    "clearAllLogs": "清空所有日志",
+    "clearConfirmHint": "确定清空所有数据？"
   },
   "usageScript": {
     "title": "配置用量查询",

@@ -750,7 +750,15 @@
     "costBreakdown": "コスト明細",
     "performance": "パフォーマンス",
     "latency": "レイテンシー",
-    "errorMessage": "エラーメッセージ"
+    "errorMessage": "エラーメッセージ",
+    "queryError": "クエリエラー",
+    "requestBody": "リクエストボディ",
+    "responseBody": "レスポンスボディ",
+    "responseEvents": "レスポンスイベント（ストリーミング）",
+    "noPayloadData": "ペイロードデータがありません",
+    "requestId": "リクエストID",
+    "clearAllLogs": "すべてクリア",
+    "clearConfirmHint": "すべてのリクエストデータをクリアしますか？"
   },
   "usageScript": {
     "title": "利用状況を設定",

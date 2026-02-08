@@ -54,7 +54,14 @@ pub fn get_request_detail(
     state: State<'_, AppState>,
     request_id: String,
 ) -> Result<Option<RequestLogDetail>, AppError> {
-    state.db.get_request_detail(&request_id)
+    log::debug!("get_request_detail called with request_id={}", request_id);
+    let result = state.db.get_request_detail(&request_id);
+    match &result {
+        Ok(Some(_)) => log::debug!("get_request_detail: found"),
+        Ok(None) => log::warn!("get_request_detail: NOT found for request_id={}", request_id),
+        Err(e) => log::error!("get_request_detail: error={}", e),
+    }
+    result
 }
 
 /// 获取模型定价列表
@@ -164,6 +171,48 @@ pub fn delete_model_pricing(state: State<'_, AppState>, model_id: String) -> Res
 
     log::info!("已删除模型定价: {model_id}");
     Ok(())
+}
+
+/// 获取请求/响应 payload 数据
+#[tauri::command]
+pub fn get_request_payload(
+    request_id: String,
+) -> Result<Option<serde_json::Value>, AppError> {
+    use crate::proxy::payload_logger;
+
+    match payload_logger::read_payload(&request_id) {
+        Some(payload) => {
+            let value = serde_json::to_value(payload)
+                .map_err(|e| AppError::JsonSerialize { source: e })?;
+            Ok(Some(value))
+        }
+        None => Ok(None),
+    }
+}
+
+/// 清空所有请求日志和 payload 数据
+#[tauri::command]
+pub fn clear_all_request_logs(
+    state: State<'_, AppState>,
+) -> Result<u32, AppError> {
+    use crate::proxy::payload_logger;
+
+    // 清空数据库记录
+    let db = state.db.clone();
+    let conn = crate::database::lock_conn!(db.conn);
+    let deleted: usize = conn
+        .execute("DELETE FROM proxy_request_logs", [])
+        .map_err(|e| AppError::Database(format!("清空请求日志失败: {e}")))?;
+
+    // 清空 payload 文件
+    let files_deleted = payload_logger::clear_all_payloads();
+
+    log::info!(
+        "已清空请求日志: {} 条数据库记录, {} 个 payload 文件",
+        deleted,
+        files_deleted
+    );
+    Ok(deleted as u32)
 }
 
 /// 模型定价信息

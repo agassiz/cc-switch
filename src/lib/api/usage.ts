@@ -114,4 +114,19 @@ export const usageApi = {
   ): Promise<ProviderLimitStatus> => {
     return invoke("check_provider_limits", { providerId, appType });
   },
+
+  getRequestPayload: async (
+    requestId: string,
+  ): Promise<{
+    request: unknown;
+    response: unknown;
+    isStreaming: boolean;
+    timestamp: number;
+  } | null> => {
+    return invoke("get_request_payload", { requestId });
+  },
+
+  clearAllRequestLogs: async (): Promise<number> => {
+    return invoke("clear_all_request_logs");
+  },
 };

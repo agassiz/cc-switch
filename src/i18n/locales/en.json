@@ -750,7 +750,15 @@
     "costBreakdown": "Cost Breakdown",
     "performance": "Performance",
     "latency": "Latency",
-    "errorMessage": "Error Message"
+    "errorMessage": "Error Message",
+    "queryError": "Query Error",
+    "requestBody": "Request Body",
+    "responseBody": "Response Body",
+    "responseEvents": "Response Events (Streaming)",
+    "noPayloadData": "No payload data available",
+    "requestId": "Request ID",
+    "clearAllLogs": "Clear All",
+    "clearConfirmHint": "Clear all request data?"
   },
   "usageScript": {
     "title": "Configure Usage Query",

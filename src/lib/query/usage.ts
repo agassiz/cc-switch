@@ -55,6 +55,8 @@ export const usageKeys = {
     ] as const,
   detail: (requestId: string) =>
     [...usageKeys.all, "detail", requestId] as const,
+  payload: (requestId: string) =>
+    [...usageKeys.all, "payload", requestId] as const,
   pricing: () => [...usageKeys.all, "pricing"] as const,
   limits: (providerId: string, appType: string) =>
     [...usageKeys.all, "limits", providerId, appType] as const,
@@ -205,6 +207,25 @@ export function useDeleteModelPricing() {
     mutationFn: (modelId: string) => usageApi.deleteModelPricing(modelId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: usageKeys.pricing() });
+    },
+  });
+}
+
+export function useRequestPayload(requestId: string) {
+  return useQuery({
+    queryKey: usageKeys.payload(requestId),
+    queryFn: () => usageApi.getRequestPayload(requestId),
+    enabled: !!requestId,
+  });
+}
+
+export function useClearAllRequestLogs() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => usageApi.clearAllRequestLogs(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: usageKeys.all });
     },
   });
 }

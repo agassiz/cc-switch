@@ -5,6 +5,7 @@
 use super::{
     handler_config::UsageParserConfig,
     handler_context::{RequestContext, StreamingTimeoutConfig},
+    payload_logger::{self, RequestPayload},
     server::ProxyState,
     usage::parser::TokenUsage,
     ProxyError,
@@ -115,6 +116,17 @@ pub async fn handle_non_streaming(
 
     // 解析并记录使用量
     if let Ok(json_value) = serde_json::from_slice::<Value>(&body_bytes) {
+        // 保存请求/响应 payload 到文件
+        payload_logger::spawn_save_payload(
+            ctx.request_id.clone(),
+            RequestPayload {
+                request: ctx.request_body.clone(),
+                response: json_value.clone(),
+                is_streaming: false,
+                timestamp: chrono::Utc::now().timestamp(),
+            },
+        );
+
         // 解析使用量
         if let Some(usage) = (parser_config.response_parser)(&json_value) {
             // 优先使用 usage 中解析出的模型名称，其次使用响应中的 model 字段，最后回退到请求模型
@@ -284,8 +296,10 @@ fn create_usage_collector(
     parser_config: &UsageParserConfig,
 ) -> SseUsageCollector {
     let state = state.clone();
+    let request_id = ctx.request_id.clone();
     let provider_id = ctx.provider.id.clone();
     let request_model = ctx.request_model.clone();
+    let request_body = ctx.request_body.clone();
     let app_type_str = parser_config.app_type_str;
     let tag = ctx.tag;
     let start_time = ctx.start_time;
@@ -294,11 +308,24 @@ fn create_usage_collector(
     let session_id = ctx.session_id.clone();
 
     SseUsageCollector::new(start_time, move |events, first_token_ms| {
+        // 保存流式请求/响应 payload 到文件
+        let events_json = serde_json::Value::Array(events.clone());
+        payload_logger::spawn_save_payload(
+            request_id.clone(),
+            RequestPayload {
+                request: request_body.clone(),
+                response: events_json,
+                is_streaming: true,
+                timestamp: chrono::Utc::now().timestamp(),
+            },
+        );
+
         if let Some(usage) = stream_parser(&events) {
             let model = model_extractor(&events, &request_model);
             let latency_ms = start_time.elapsed().as_millis() as u64;
 
             let state = state.clone();
+            let request_id = request_id.clone();
             let provider_id = provider_id.clone();
             let session_id = session_id.clone();
             let request_model = request_model.clone();
@@ -306,6 +333,7 @@ fn create_usage_collector(
             tokio::spawn(async move {
                 log_usage_internal(
                     &state,
+                    &request_id,
                     &provider_id,
                     app_type_str,
                     &model,
@@ -323,6 +351,7 @@ fn create_usage_collector(
             let model = model_extractor(&events, &request_model);
             let latency_ms = start_time.elapsed().as_millis() as u64;
             let state = state.clone();
+            let request_id = request_id.clone();
             let provider_id = provider_id.clone();
             let session_id = session_id.clone();
             let request_model = request_model.clone();
@@ -330,6 +359,7 @@ fn create_usage_collector(
             tokio::spawn(async move {
                 log_usage_internal(
                     &state,
+                    &request_id,
                     &provider_id,
                     app_type_str,
                     &model,
@@ -359,6 +389,7 @@ fn spawn_log_usage(
     is_streaming: bool,
 ) {
     let state = state.clone();
+    let request_id = ctx.request_id.clone();
     let provider_id = ctx.provider.id.clone();
     let app_type_str = ctx.app_type_str.to_string();
     let model = model.to_string();
@@ -369,6 +400,7 @@ fn spawn_log_usage(
     tokio::spawn(async move {
         log_usage_internal(
             &state,
+            &request_id,
             &provider_id,
             &app_type_str,
             &model,
@@ -388,6 +420,7 @@ fn spawn_log_usage(
 #[allow(clippy::too_many_arguments)]
 async fn log_usage_internal(
     state: &ProxyState,
+    request_id: &str,
     provider_id: &str,
     app_type: &str,
     model: &str,
@@ -410,8 +443,6 @@ async fn log_usage_internal(
         model
     };
 
-    let request_id = uuid::Uuid::new_v4().to_string();
-
     log::debug!(
         "[{app_type}] 记录请求日志: id={request_id}, provider={provider_id}, model={model}, streaming={is_streaming}, status={status_code}, latency_ms={latency_ms}, first_token_ms={first_token_ms:?}, session={}, input={}, output={}, cache_read={}, cache_creation={}",
         session_id.as_deref().unwrap_or("none"),
@@ -422,7 +453,7 @@ async fn log_usage_internal(
     );
 
     if let Err(e) = logger.log_with_calculation(
-        request_id,
+        request_id.to_string(),
         provider_id.to_string(),
         app_type.to_string(),
         model.to_string(),
@@ -649,6 +680,7 @@ mod tests {
 
         log_usage_internal(
             &state,
+            "test-req-1",
             "provider-1",
             app_type,
             "resp-model",
@@ -708,6 +740,7 @@ mod tests {
 
         log_usage_internal(
             &state,
+            "test-req-2",
             "provider-2",
             app_type,
             "resp-model",
